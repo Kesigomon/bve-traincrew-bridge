@@ -6,11 +6,11 @@ using TrainCrew;
 internal class Program
 {
     private TimeSpan PreviousTime {  get; set; }
-    private string PreviousDiaName { get; set; } = "";
     private bool PreviousDoorClose { get; set; } = true;
     private int PreviousPnotch = 0;
     private int PreviousBnotch = 0;
     private BeaconHandler Handler;
+    private GameScreen? PreviousGameScreen{ get; set; }
 
     Program()
     {
@@ -31,29 +31,41 @@ internal class Program
         {
             loadPlugin();
             var firstLoop = true;
+            var firstGameLoop = true;
+            PreviousGameScreen = TrainCrewInput.gameState.gameScreen;
             while (true)
             {
                 TrainCrewInput.RequestStaData();
                 var timer = Task.Delay(16);
-                var state = TrainCrewInput.GetTrainState();
-                // 列車番号が変わっている場合、列車が変わっているので電車再読み込み
-                if (state.diaName != PreviousDiaName || firstLoop)
+                TrainState state = TrainCrewInput.GetTrainState();
+                GameState gameState = TrainCrewInput.gameState;
+                // ゲームロードしてから最初のフレームであるか
+                bool isFirstLoadingFrame = PreviousGameScreen != GameScreen.MainGame_Loading && gameState.gameScreen == GameScreen.MainGame_Loading;
+                // ゲームプレイ中以外からローディングに入った場合は乗務をえらんだので、全て読み込み
+                if (
+                    (PreviousGameScreen != GameScreen.MainGame 
+                    && isFirstLoadingFrame
+                    ) || firstLoop
+                )
                 {
                     loadTrain(state);
-                    
+                    firstLoop = false;
+                    firstGameLoop = true;
                 }
-                // 明らかに時刻が戻っている場合は、最初からを選んだので路線のみ再読み込み
-                // Todo: TrainCrew側でState実装されたらそちらに変更
-                else if (state.NowTime < PreviousTime)
+                // ゲームポーズ中からローディングに入った場合、最初から読み込みを選んだので、路線のみを再読み込み
+                else if (
+                    PreviousGameScreen == GameScreen.MainGame_Pause
+                    && isFirstLoadingFrame
+                )
                 {
                     loadDiagram();
                 }
                 
-                // 時刻が進んでいれば、Elapseを呼ぶ Todo: State取得できるようになったらそれ使う Pause禁止
-                if (state.NowTime > PreviousTime || true)
+                // プレイ中であれば諸々の処理を行う
+                if (TrainCrewInput.gameState.gameScreen == GameScreen.MainGame)
                 {
                     // ドアの開閉処理
-                    if (state.AllClose != PreviousDoorClose || firstLoop)
+                    if (state.AllClose != PreviousDoorClose || firstGameLoop)
                     {
                         if (state.AllClose)
                         {
@@ -92,11 +104,11 @@ internal class Program
                     // TrainCrewInput.SetReverser(handle.Reverser);
                     // ビーコン処理
                     handleBeacon(state);
+                    firstGameLoop = false;
                 }
+                PreviousGameScreen = gameState.gameScreen;
                 PreviousDoorClose = state.AllClose;
-                PreviousDiaName = state.diaName;
                 PreviousTime = state.NowTime;
-                firstLoop = false;
                 await timer;
             }
         }
