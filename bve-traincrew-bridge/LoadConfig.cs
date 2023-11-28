@@ -14,7 +14,7 @@ public class TASCConfigObject
 
 public static class Config
 {
-    public static bool RestApiEnable { get; set; } = false;
+    public static bool ApiEnable { get; set; } = false;
     public static int RestApiPort { get; set; } = 56001;
     public static TASCConfigObject TASCConfig { get; set; } = new();
     
@@ -23,7 +23,6 @@ public static class Config
         // Todo: ロギング用のライブラリを使う
         var parser = new FileIniDataParser();
         IniData appConfig = new();
-        IniData autoPilotConfig = new();
         
         // Bridge config
         try
@@ -34,54 +33,37 @@ public static class Config
         {
             Console.WriteLine("設定ファイルが見つかりませんでした。デフォルト設定で起動します。");
         }
-
-        // TASC, Autopilot config
-        try
-        {
-            autoPilotConfig = parser.ReadFile("autopilot.ini");
-        }
-        catch (Exception)
-        {
-            Console.WriteLine("自動運転プラグインの設定ファイルが見つかりませんでした。デフォルト設定で起動します。");
-            throw;
-        }
-        
         
         const string tanudenModApiSectionName = "tanuden_mod_api";
         // Only if the key exists, set it
         if (appConfig[tanudenModApiSectionName].ContainsKey("enable"))
         {
-            RestApiEnable = bool.Parse(appConfig[tanudenModApiSectionName]["enable"]);
-        }
-        
-        if (appConfig[tanudenModApiSectionName].ContainsKey("port"))
-        {
-            RestApiPort = int.Parse(appConfig[tanudenModApiSectionName]["port"]);
+            ApiEnable = bool.Parse(appConfig[tanudenModApiSectionName]["enable"]);
         }
         
         
         // Set for autopilot
-        const string panelSectionName = "panel";
-        if (!RestApiEnable) return;
-        if (autoPilotConfig[panelSectionName].ContainsKey("tascenabled"))
+        const string panelSectionName = "autopilot_panel";
+        
+        if (appConfig[panelSectionName].ContainsKey("tascenabled"))
         {
-            TASCConfig.tascenabled = int.Parse(autoPilotConfig[panelSectionName]["tascenabled"]);
+            TASCConfig.tascenabled = int.Parse(appConfig[panelSectionName]["tascenabled"]);
         }
-        if (autoPilotConfig[panelSectionName].ContainsKey("tascmonitor"))
+        if (appConfig[panelSectionName].ContainsKey("tascmonitor"))
         {
-            TASCConfig.tascmonitor = int.Parse(autoPilotConfig[panelSectionName]["tascmonitor"]);
+            TASCConfig.tascmonitor = int.Parse(appConfig[panelSectionName]["tascmonitor"]);
         }
-        if (autoPilotConfig[panelSectionName].ContainsKey("tascbrake"))
+        if (appConfig[panelSectionName].ContainsKey("tascbrake"))
         {
-            TASCConfig.tascbrake = int.Parse(autoPilotConfig[panelSectionName]["tascbrake"]);
+            TASCConfig.tascbrake = int.Parse(appConfig[panelSectionName]["tascbrake"]);
         }
-        if (autoPilotConfig[panelSectionName].ContainsKey("tascposition"))
+        if (appConfig[panelSectionName].ContainsKey("tascposition"))
         {
-            TASCConfig.tascposition = int.Parse(autoPilotConfig[panelSectionName]["tascposition"]);
+            TASCConfig.tascposition = int.Parse(appConfig[panelSectionName]["tascposition"]);
         }
-        if (autoPilotConfig[panelSectionName].ContainsKey("inching"))
+        if (appConfig[panelSectionName].ContainsKey("inching"))
         {
-            TASCConfig.inching = int.Parse(autoPilotConfig[panelSectionName]["inching"]);
+            TASCConfig.inching = int.Parse(appConfig[panelSectionName]["inching"]);
         }
     }
 }

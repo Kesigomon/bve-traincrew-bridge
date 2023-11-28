@@ -1,7 +1,11 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using bve_traincrew_bridge;
+using Tanuden.Common;
+using Tanuden.TIMS.API;
 using TrainCrew;
+using TrainState = TrainCrew.TrainState;
 
 internal class Program
 {
@@ -11,8 +15,11 @@ internal class Program
     private int PreviousPnotch = 0;
     private int PreviousBnotch = 0;
     private BeaconHandler Handler;
-    private RESTApi RestApi;
     
+    // Get version of this assembly
+    private static string? Version => Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+    private static string TanudenPluginUid = "kesigomon.bve_traincrew_bridge";
+
     Program()
     {
         Handler = new BeaconHandler();
@@ -20,6 +27,9 @@ internal class Program
 
     private static void Main(string[] args)
     {
+        // Load config
+        Config.LoadConfig();
+        
         var program = new Program();
         var task = program.main(args);
         task.Wait();
@@ -32,19 +42,22 @@ internal class Program
         
         TrainCrewInput.Init();
         
-        // Load config
-        Config.LoadConfig();
-        
-        
         // Start REST API
-        if (Config.RestApiEnable)
+        if (Config.ApiEnable)
         {
-            RestApi = new IRestApi(Config.RestApiPort);
+            Console.WriteLine("タヌ電のAPIを待機中...");
+            TanudenTIMSAPI.WaitForApi();
+            Console.WriteLine("タヌ電のAPIに接続オーライ！");
+            
+            TanudenTIMSAPI.Init(new PluginMeta
+            {
+                Uid = TanudenPluginUid,
+                Name = "BVE TrainCrew Bridge",
+                Version = Version!,
+                Author = "Kesigomon"
+            });
         }
-        else
-        {
-            RestApi = new EmptyRestApi();
-        }
+        
         try
         {
             loadPlugin();
@@ -161,19 +174,6 @@ internal class Program
         Handler.Reset();
         AtsPlugin.Initialize(1);
     }
-
-    private void PopulateTascData(int[] panelLamps)
-    {
-        // autopilot.iniパネル設定
-        // Populate TASC data into TascData
-        TascObject tascData = new TascObject();
-        tascData.Power = panelLamps[Config.TASCConfig.tascenabled] != 0;
-        tascData.Monitor = panelLamps[Config.TASCConfig.tascmonitor] != 0;
-        tascData.Brake = panelLamps[Config.TASCConfig.tascbrake];
-        tascData.Position = panelLamps[Config.TASCConfig.tascposition];
-        tascData.Inching = panelLamps[Config.TASCConfig.inching] != 0;
-        RestApi.SetTascObject(tascData);
-    } 
     
     private AtsPlugin.ATS_HANDLES elapse(TrainState trainState)
     {
@@ -205,9 +205,29 @@ internal class Program
         var result = AtsPlugin.Elapse(vehicleState, panel, sound);
 
         // もしREST APIを有効にしていたら、TASCデータを更新する
-        if (Config.RestApiEnable)
+        if (Config.ApiEnable)
         {
-            PopulateTascData(panel);   
+            TanudenTIMSAPI.SendData(new PluginState
+            {
+                Uid = TanudenPluginUid,
+                Data = new
+                {
+                    trainState = new
+                    {
+                        lamps = new
+                        {
+                            tasc = new
+                            {
+                                power = panel[Config.TASCConfig.tascenabled] != 0,
+                                monitor = panel[Config.TASCConfig.tascmonitor] != 0,
+                                brake = panel[Config.TASCConfig.tascbrake],
+                                position = panel[Config.TASCConfig.tascposition],
+                                inching = panel[Config.TASCConfig.inching] != 0
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         return result;
