@@ -1,7 +1,11 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using bve_traincrew_bridge;
+using Tanuden.Common;
+using Tanuden.TIMS.API;
 using TrainCrew;
-
-
+using TrainState = TrainCrew.TrainState;
 
 internal class Program
 {
@@ -13,6 +17,9 @@ internal class Program
     private int PreviousTascBNotch = -1;
     private BeaconHandler Handler;
     private GameScreen? PreviousGameScreen{ get; set; }
+    
+    // Get version of this assembly
+    internal static string? Version => Assembly.GetExecutingAssembly().GetName().Version?.ToString();
 
     Program()
     {
@@ -21,6 +28,9 @@ internal class Program
 
     private static void Main(string[] args)
     {
+        // Load config
+        Config.LoadConfig();
+        
         var program = new Program();
         var task = program.main(args);
         task.Wait();
@@ -28,7 +38,16 @@ internal class Program
 
     private async Task main(string[] args)
     {
+        // Enable Kana/Kanji console output
+        Console.OutputEncoding = Encoding.GetEncoding("UTF-8");
+        
         TrainCrewInput.Init();
+
+        if (Config.ApiEnable)
+        {
+            TanudenIntegration.RegisterApi();
+        }
+        
         try
         {
             loadPlugin();
@@ -202,8 +221,8 @@ internal class Program
     {
         Handler.Reset();
         AtsPlugin.Initialize(1);
-        
     }
+    
     private AtsPlugin.ATS_HANDLES elapse(TrainState trainState)
     {
         var vehicleState = new AtsPlugin.ATS_VEHICLESTATE();
@@ -232,6 +251,13 @@ internal class Program
         var panel = new int[256];
         var sound = new int[256];
         var result = AtsPlugin.Elapse(vehicleState, panel, sound);
+
+        // もしREST APIを有効にしていたら、TASCデータを更新する
+        if (Config.ApiEnable)
+        {
+            TanudenIntegration.SendTascPanel(panel);
+        }
+        
         return result;
     }
 
