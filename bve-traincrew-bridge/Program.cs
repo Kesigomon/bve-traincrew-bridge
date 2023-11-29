@@ -9,6 +9,8 @@ internal class Program
     private bool PreviousDoorClose { get; set; } = true;
     private int PreviousPnotch = 0;
     private int PreviousBnotch = 0;
+    private int PreviousTascPNotch = -1;
+    private int PreviousTascBNotch = -1;
     private BeaconHandler Handler;
     private GameScreen? PreviousGameScreen{ get; set; }
 
@@ -33,10 +35,11 @@ internal class Program
             var firstLoop = true;
             var firstGameLoop = true;
             PreviousGameScreen = TrainCrewInput.gameState.gameScreen;
+            float previousSpeed = 0;
             while (true)
             {
                 TrainCrewInput.RequestStaData();
-                var timer = Task.Delay(16);
+                var timer = Task.Delay(17);
                 TrainState state = TrainCrewInput.GetTrainState();
                 GameState gameState = TrainCrewInput.gameState;
                 // ゲームロードしてから最初のフレームであるか
@@ -49,8 +52,6 @@ internal class Program
                 )
                 {
                     loadTrain(state);
-                    firstLoop = false;
-                    firstGameLoop = true;
                 }
                 // ゲームポーズ中からローディングに入った場合、最初から読み込みを選んだので、路線のみを再読み込み
                 else if (
@@ -60,9 +61,24 @@ internal class Program
                 {
                     loadDiagram();
                 }
+                // ゲームをロードしたときの処理
+                if (isFirstLoadingFrame　|| firstLoop)
+                {
+                    firstLoop = false;
+                    firstGameLoop = true;
+                    previousSpeed = 0;
+                    PreviousPnotch = 0;
+                    PreviousBnotch = 0;
+                    PreviousTascPNotch = -1;
+                    PreviousTascBNotch = -1;
+                }
                 
                 // プレイ中であれば諸々の処理を行う
-                if (TrainCrewInput.gameState.gameScreen == GameScreen.MainGame)
+                if (
+                    TrainCrewInput.gameState.gameScreen == GameScreen.MainGame 
+                    // 速度が変化していない場合、フレーム処理が行われていないと推測できるのでフレーム処理をスキップ
+                    && (state.Speed == 0 || state.Speed != previousSpeed)
+                )
                 {
                     // ドアの開閉処理
                     if (state.AllClose != PreviousDoorClose || firstGameLoop)
@@ -76,31 +92,61 @@ internal class Program
                             doorOpen();
                         }
                     }
-                    // 手動操作をBVEプラグイン側に伝える
-                    if(state.Pnotch != PreviousPnotch)
+                    var isControllerChanged = false;
+                    
+                    // TASC/ATOの操作適用を確認する
+                    if (PreviousTascBNotch >= 0)
                     {
-                        setPower(state.Pnotch);
-                        PreviousPnotch = state.Pnotch;
+                        if (PreviousTascBNotch == state.Bnotch)
+                        {
+                            PreviousTascBNotch = -1;
+                        }
                     }
-                    if(state.Bnotch != PreviousBnotch)
+                    else if (PreviousTascPNotch >= 0)
                     {
-                        setBrake(state.Bnotch);
-                        PreviousBnotch = state.Bnotch;
+                        if (PreviousTascPNotch == state.Pnotch)
+                        {
+                            PreviousTascPNotch = -1;
+                        }
+                    }
+                    // TASC/ATOノッチの操作の影響がなければ、手動操作をBVEプラグイン側に伝える
+                    else
+                    {
+                        if(state.Bnotch != PreviousBnotch)
+                        {
+                            Console.WriteLine("Changed to B" + (PreviousBnotch - 1) + "->B" + (state.Bnotch-1));
+                            setBrake(state.Bnotch);
+                            isControllerChanged = true;
+                        }
+                        else if(state.Pnotch != PreviousPnotch)
+                        {
+                            Console.WriteLine("Changed to P" + PreviousPnotch + "->P" + state.Pnotch);
+                            setPower(state.Pnotch);
+                            isControllerChanged = true;
+                        }
                     }
                     // フレーム処理
                     var handle = elapse(state);
+                    PreviousPnotch = handle.Brake == 0 ? handle.Power : 0;
+                    PreviousBnotch = handle.Brake;
                     // 結果をTrainCrew側に反映
-                    if (state.Pnotch != handle.Power)
+                    if (isControllerChanged)
                     {
-                        TrainCrewInput.SetNotch(handle.Power);   
+                        // ハンドル操作があった場合は、TASC/ATOの操作は適用しない
+                        PreviousBnotch = state.Bnotch;
+                        PreviousPnotch = state.Pnotch;
                     }
                     else if (state.Bnotch != handle.Brake)
                     {
                         TrainCrewInput.SetNotch(-handle.Brake);
+                        PreviousTascBNotch = handle.Brake;
                     }
-                    PreviousPnotch = handle.Power;
-                    PreviousBnotch = handle.Brake;
-
+                    else if (handle.Brake == 0 && state.Pnotch != handle.Power)
+                    {
+                        TrainCrewInput.SetNotch(handle.Power);
+                        PreviousTascPNotch = handle.Power;
+                    }
+                    
                     // TrainCrewInput.SetReverser(handle.Reverser);
                     // ビーコン処理
                     handleBeacon(state);
@@ -109,6 +155,7 @@ internal class Program
                 PreviousGameScreen = gameState.gameScreen;
                 PreviousDoorClose = state.AllClose;
                 PreviousTime = state.NowTime;
+                previousSpeed = state.Speed;
                 await timer;
             }
         }
