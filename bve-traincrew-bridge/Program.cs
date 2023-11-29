@@ -1,7 +1,11 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using bve_traincrew_bridge;
+using Tanuden.Common;
+using Tanuden.TIMS.API;
 using TrainCrew;
-
-
+using TrainState = TrainCrew.TrainState;
 
 internal class Program
 {
@@ -11,6 +15,9 @@ internal class Program
     private int PreviousPnotch = 0;
     private int PreviousBnotch = 0;
     private BeaconHandler Handler;
+    
+    // Get version of this assembly
+    internal static string? Version => Assembly.GetExecutingAssembly().GetName().Version?.ToString();
 
     Program()
     {
@@ -19,6 +26,9 @@ internal class Program
 
     private static void Main(string[] args)
     {
+        // Load config
+        Config.LoadConfig();
+        
         var program = new Program();
         var task = program.main(args);
         task.Wait();
@@ -26,7 +36,16 @@ internal class Program
 
     private async Task main(string[] args)
     {
+        // Enable Kana/Kanji console output
+        Console.OutputEncoding = Encoding.GetEncoding("UTF-8");
+        
         TrainCrewInput.Init();
+
+        if (Config.ApiEnable)
+        {
+            TanudenIntegration.RegisterApi();
+        }
+        
         try
         {
             loadPlugin();
@@ -40,7 +59,6 @@ internal class Program
                 if (state.diaName != PreviousDiaName || firstLoop)
                 {
                     loadTrain(state);
-                    
                 }
                 // 明らかに時刻が戻っている場合は、最初からを選んだので路線のみ再読み込み
                 // Todo: TrainCrew側でState実装されたらそちらに変更
@@ -143,8 +161,8 @@ internal class Program
     {
         Handler.Reset();
         AtsPlugin.Initialize(1);
-        
     }
+    
     private AtsPlugin.ATS_HANDLES elapse(TrainState trainState)
     {
         var vehicleState = new AtsPlugin.ATS_VEHICLESTATE();
@@ -173,6 +191,13 @@ internal class Program
         var panel = new int[256];
         var sound = new int[256];
         var result = AtsPlugin.Elapse(vehicleState, panel, sound);
+
+        // もしREST APIを有効にしていたら、TASCデータを更新する
+        if (Config.ApiEnable)
+        {
+            TanudenIntegration.SendTascPanel(panel);
+        }
+        
         return result;
     }
 

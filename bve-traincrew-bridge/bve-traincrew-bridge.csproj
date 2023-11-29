@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0-windows</TargetFramework>
+    <TargetFramework>net7.0-windows</TargetFramework>
     <RootNamespace>bve_traincrew_bridge</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -10,6 +10,10 @@
     <Platforms>x64;x86</Platforms>
     <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>false</SelfContained>
+    
+    <AssemblyName>bve-traincrew-bridge</AssemblyName>
+    <Company>Kesigomon</Company>
+    <Authors>Kesigomon</Authors>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">
@@ -32,9 +36,21 @@
 
 
   <ItemGroup>
+    <Reference Include="Tanuden.Common">
+      <HintPath>dll\Tanuden.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="Tanuden.TIMS.API">
+      <HintPath>dll\Tanuden.TIMS.API.dll</HintPath>
+    </Reference>
     <Reference Include="TrainCrewInput">
       <HintPath>.\dll\TrainCrewInput.dll</HintPath>
     </Reference>
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <PackageReference Include="ini-parser" Version="2.5.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
 </Project>
