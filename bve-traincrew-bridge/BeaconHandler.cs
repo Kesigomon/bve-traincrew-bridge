@@ -10,6 +10,7 @@ internal class BeaconHandler
     public void HandleBeacon(TrainState state)
     {
         if (state == null) return;
+        HandleGeneralBeacon(state);
         // TASCに必要なビーコン
         HandleTascBeacon(state);
         // ATOに必要なビーコン(制限速度etc...)
@@ -27,7 +28,8 @@ internal class BeaconHandler
         {
             return;
         }
-        foreach (var distance in new float[]{ 500, 300, 10 })
+        // Todo: 地上子を置く位置を指定可能にする
+        foreach (var distance in new float[]{ 900, 700, 500, 300, 10 })
         {
             if (state.nextStaDistance >= distance ||  PreviousNextStaDistance < distance)
             {
