@@ -1,9 +1,6 @@
 ﻿using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text;
 using bve_traincrew_bridge;
-using Tanuden.Common;
-using Tanuden.TIMS.API;
 using TrainCrew;
 using TrainState = TrainCrew.TrainState;
 
@@ -11,10 +8,11 @@ internal class Program
 {
     private TimeSpan PreviousTime {  get; set; }
     private bool PreviousDoorClose { get; set; } = true;
-    private int PreviousPnotch = 0;
-    private int PreviousBnotch = 0;
+    private int PreviousHandPnotch = 0;
+    private int PreviousHandBnotch = 0;
     private int PreviousTascPNotch = -1;
     private int PreviousTascBNotch = -1;
+    private int PreviousReverser = 0;
     private BeaconHandler Handler;
     private GameScreen? PreviousGameScreen{ get; set; }
     
@@ -54,7 +52,6 @@ internal class Program
             var firstLoop = true;
             var firstGameLoop = true;
             PreviousGameScreen = TrainCrewInput.gameState.gameScreen;
-            float previousSpeed = 0;
             while (true)
             {
                 TrainCrewInput.RequestStaData();
@@ -85,20 +82,21 @@ internal class Program
                 {
                     firstLoop = false;
                     firstGameLoop = true;
-                    previousSpeed = 0;
-                    PreviousPnotch = 0;
-                    PreviousBnotch = 0;
-                    PreviousTascPNotch = -1;
-                    PreviousTascBNotch = -1;
                 }
                 
                 // プレイ中であれば諸々の処理を行う
                 if (
-                    TrainCrewInput.gameState.gameScreen == GameScreen.MainGame 
-                    // 速度が変化していない場合、フレーム処理が行われていないと推測できるのでフレーム処理をスキップ
-                    && (state.Speed == 0 || state.Speed != previousSpeed)
+                    TrainCrewInput.gameState.gameScreen == GameScreen.MainGame
                 )
                 {
+                    if (firstGameLoop)
+                    {
+                        PreviousHandPnotch = state.Pnotch;
+                        PreviousHandBnotch = state.Bnotch;
+                        PreviousReverser = 2;
+                        PreviousTascPNotch = -1;
+                        PreviousTascBNotch = -1;
+                    }
                     // ドアの開閉処理
                     if (state.AllClose != PreviousDoorClose || firstGameLoop)
                     {
@@ -111,58 +109,38 @@ internal class Program
                             doorOpen();
                         }
                     }
-                    var isControllerChanged = false;
-                    
-                    // TASC/ATOの操作適用を確認する
-                    if (PreviousTascBNotch >= 0)
+                    // 手動操作をBVEプラグイン側に伝える(1フレーム前のプラグインの操作と比較して、変化があればそれは手動操作と認識できる)
+                    if(state.Bnotch != PreviousTascBNotch && state.Bnotch != PreviousHandBnotch)
                     {
-                        if (PreviousTascBNotch == state.Bnotch)
-                        {
-                            PreviousTascBNotch = -1;
-                        }
+                        Console.WriteLine("Changed to B" + (PreviousHandBnotch - 1) + "->B" + (state.Bnotch-1));
+                        setBrake(state.Bnotch);
+                        setPower(0);
+                        PreviousHandBnotch = state.Bnotch;
                     }
-                    else if (PreviousTascPNotch >= 0)
+                    else if(state.Pnotch != PreviousTascPNotch && state.Pnotch != PreviousHandPnotch)
                     {
-                        if (PreviousTascPNotch == state.Pnotch)
-                        {
-                            PreviousTascPNotch = -1;
-                        }
+                        Console.WriteLine("Changed to P" + PreviousHandPnotch + "->P" + state.Pnotch);
+                        setPower(state.Pnotch);
+                        setBrake(0);
+                        PreviousHandPnotch = state.Pnotch;
                     }
-                    // TASC/ATOノッチの操作の影響がなければ、手動操作をBVEプラグイン側に伝える
-                    else
+                    if(state.Reverser != PreviousReverser)
                     {
-                        if(state.Bnotch != PreviousBnotch)
-                        {
-                            Console.WriteLine("Changed to B" + (PreviousBnotch - 1) + "->B" + (state.Bnotch-1));
-                            setBrake(state.Bnotch);
-                            isControllerChanged = true;
-                        }
-                        else if(state.Pnotch != PreviousPnotch)
-                        {
-                            Console.WriteLine("Changed to P" + PreviousPnotch + "->P" + state.Pnotch);
-                            setPower(state.Pnotch);
-                            isControllerChanged = true;
-                        }
+                        Console.WriteLine("Changed to R" + PreviousReverser + "->R" + state.Reverser);
+                        setReverse(state.Reverser);
+                        PreviousReverser = state.Reverser;
                     }
                     // フレーム処理
                     var handle = elapse(state);
-                    PreviousPnotch = handle.Brake == 0 ? handle.Power : 0;
-                    PreviousBnotch = handle.Brake;
                     // 結果をTrainCrew側に反映
-                    if (isControllerChanged)
+                    if (PreviousTascBNotch != handle.Brake)
                     {
-                        // ハンドル操作があった場合は、TASC/ATOの操作は適用しない
-                        PreviousBnotch = state.Bnotch;
-                        PreviousPnotch = state.Pnotch;
-                    }
-                    else if (state.Bnotch != handle.Brake)
-                    {
-                        TrainCrewInput.SetNotch(-handle.Brake);
+                        TrainCrewInput.SetATO_Notch(-handle.Brake);
                         PreviousTascBNotch = handle.Brake;
                     }
-                    else if (handle.Brake == 0 && state.Pnotch != handle.Power)
+                    else if (handle.Brake == 0 && PreviousTascPNotch != handle.Power)
                     {
-                        TrainCrewInput.SetNotch(handle.Power);
+                        TrainCrewInput.SetATO_Notch(handle.Power);
                         PreviousTascPNotch = handle.Power;
                     }
                     
@@ -174,7 +152,6 @@ internal class Program
                 PreviousGameScreen = gameState.gameScreen;
                 PreviousDoorClose = state.AllClose;
                 PreviousTime = state.NowTime;
-                previousSpeed = state.Speed;
                 await timer;
             }
         }
@@ -214,13 +191,12 @@ internal class Program
         spec.AtsNotch = 8;
         AtsPlugin.SetVehicleSpec(spec);
         loadDiagram();
-        setReverse(1);
     }
 
     private void loadDiagram()
     {
-        Handler.Reset();
         AtsPlugin.Initialize(1);
+        Handler.Reset();
     }
     
     private AtsPlugin.ATS_HANDLES elapse(TrainState trainState)
@@ -239,19 +215,16 @@ internal class Program
         }
         vehicleState.Speed = trainState.Speed;
         vehicleState.Time = (int)trainState.NowTime.TotalMilliseconds;
-        // Todo: carState使ってブレーキシリンダ圧力を設定
-        vehicleState.BcPressure = 0;
+        vehicleState.BcPressure = trainState.CarStates[0].BC_Press;
         vehicleState.MrPressure = trainState.MR_Press;
         // Todo: TrainCrew側で実装されたら正しい値に変える
         vehicleState.ErPressure = 0;
         vehicleState.BpPressure = 0;
         vehicleState.SapPressure = 0;
-        // Todo: carState使って電流を設定
-        vehicleState.Current = 0;
+        vehicleState.Current = trainState.CarStates[0].Ampare;
         var panel = new int[256];
         var sound = new int[256];
         var result = AtsPlugin.Elapse(vehicleState, panel, sound);
-
         // もしREST APIを有効にしていたら、TASCデータを更新する
         if (Config.ApiEnable)
         {
