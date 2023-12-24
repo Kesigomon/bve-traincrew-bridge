@@ -54,7 +54,6 @@ internal class Program
             PreviousGameScreen = TrainCrewInput.gameState.gameScreen;
             while (true)
             {
-                TrainCrewInput.RequestStaData();
                 var timer = Task.Delay(17);
                 TrainState state = TrainCrewInput.GetTrainState();
                 GameState gameState = TrainCrewInput.gameState;
@@ -91,6 +90,8 @@ internal class Program
                 {
                     if (firstGameLoop)
                     {
+                        TrainCrewInput.RequestStaData();
+                        TrainCrewInput.RequestData(DataRequest.Signal | DataRequest.Switch);
                         PreviousHandPnotch = state.Pnotch;
                         PreviousHandBnotch = state.Bnotch;
                         PreviousReverser = 2;
@@ -146,7 +147,7 @@ internal class Program
                     
                     // TrainCrewInput.SetReverser(handle.Reverser);
                     // ビーコン処理
-                    handleBeacon(state);
+                    handleBeacon(state, TrainCrewInput.signals);
                     firstGameLoop = false;
                 }
                 PreviousGameScreen = gameState.gameScreen;
@@ -163,11 +164,11 @@ internal class Program
         
     }
 
-    private void handleBeacon(TrainState state)
+    private void handleBeacon(TrainState state, List<SignalInfo> signals)
     {
         // 運転状況に合わせてビーコンを通過した旨をBVEプラグインに送る
         // ここは、プラグインや状況に応じてカスタムが必要になる
-        Handler.HandleBeacon(state);
+        Handler.HandleBeacon(state, signals);
     }
 
 
@@ -202,17 +203,7 @@ internal class Program
     private AtsPlugin.ATS_HANDLES elapse(TrainState trainState)
     {
         var vehicleState = new AtsPlugin.ATS_VEHICLESTATE();
-        // 現在位置の計算
-        // 現在位置は次の駅との距離差分で計算する
-        if (trainState.stationList.Count > trainState.nowStaIndex)
-        {
-            var nextStation = trainState.stationList[trainState.nowStaIndex];
-            vehicleState.Location = nextStation.TotalLength - trainState.nextStaDistance;
-        }
-        else
-        {
-            vehicleState.Location = 0;
-        }
+        vehicleState.Location = trainState.TotalLength;
         vehicleState.Speed = trainState.Speed;
         vehicleState.Time = (int)trainState.NowTime.TotalMilliseconds;
         vehicleState.BcPressure = trainState.CarStates[0].BC_Press;
